@@ -61,30 +61,31 @@ class AverageMeter(object):
         self.count += n
         self.avg = self.sum / self.count
 
-def choose_N_A_data(image, label, batch_size):
+
+def choose_augmented_samples(image, flag, batch_size):
     data_dict = {}
-    N_num = label.sum().item()
-    if N_num == batch_size:
-        data_dict['N'] = image
-        data_dict['A'] = None
-        return data_dict, N_num
-    elif N_num == 0:
-        data_dict['N'] = None
-        data_dict['A'] = image
-        return data_dict, N_num
+    augmented_image_num =flag.sum().item()
+    if augmented_image_num == batch_size:
+        data_dict['aug'] = image
+        data_dict['ori'] = None
+        return data_dict, augmented_image_num
+    elif augmented_image_num == 0:
+        data_dict['aug'] = None
+        data_dict['ori'] = image
+        return data_dict, augmented_image_num
     else:
-        N_data = torch.zeros((N_num, image.size()[1], image.size()[2], image.size()[3]))
-        A_data = torch.zeros((batch_size-N_num, image.size()[1], image.size()[2], image.size()[3]))
+        aug_data = torch.zeros((augmented_image_num, image.size()[1], image.size()[2], image.size()[3]))
+        ori_data = torch.zeros((batch_size-augmented_image_num, image.size()[1], image.size()[2], image.size()[3]))
         try:
-            N_index = torch.where(label==1)[0].cpu().numpy().tolist()
-            A_index = torch.where(label==0)[0].cpu().numpy().tolist()
+            aug_index = torch.where(flag==1)[0].cpu().numpy().tolist()
+            ori_index = torch.where(flag==0)[0].cpu().numpy().tolist()
         except:
-            N_index = torch.where(label==1)[0].numpy().tolist()
-            A_index = torch.where(label==0)[0].numpy().tolist()
-        for idx, i in enumerate(N_index):
-            N_data[idx,:,:,:] = image[i,:,:,:]
-        for idx, i in enumerate(A_index):
-            A_data[idx,:,:,:] = image[i,:,:,:]
-        data_dict['N'] = N_data
-        data_dict['A'] = A_data
-    return data_dict, N_num
+            aug_index = torch.where(flag==1)[0].numpy().tolist()
+            ori_index = torch.where(flag==0)[0].numpy().tolist()
+        for idx, i in enumerate(aug_index):
+            aug_data[idx,:,:,:] = image[i,:,:,:]
+        for idx, i in enumerate(ori_index):
+            ori_data[idx,:,:,:] = image[i,:,:,:]
+        data_dict['aug'] = aug_data
+        data_dict['ori'] = ori_data
+        return data_dict, augmented_image_num

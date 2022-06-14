@@ -1,17 +1,15 @@
 import torch
 import torch.nn as nn
-from models import discriminator, encoder_decoder
-from losses import my_loss
+from models import ME, MD, Discriminator, MLP
+from losses import SSIM, CTLoss
 import numpy as np
-import cv2
 import os
 from torch.utils.data import DataLoader
-from torchvision.datasets import ImageFolder
-from torchvision import transforms
 import torch.optim as optim
 import utils
 import matplotlib.pyplot as plt
 from torchvision.utils import save_image
+from eye_dataset import EyeDataset
 
 
 if __name__ == '__main__':
@@ -23,60 +21,55 @@ if __name__ == '__main__':
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = True
 
-    DATA_PATH = '/home/ps/disk12t/ACY/AD_DGM/data/eye'
-    LOG_PATH = '/home/ps/disk12t/ACY/AD_DGM/log/220530'
+    DATA_PATH = 'data/eye/N'
+    LOG_PATH = 'log/220615'
+    utils.check_and_create_folder(LOG_PATH)
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     loss_dict = {'loss_1':[], 'loss_2':[]}
 
-    batch_size = 16
-    lr = 1e-5
+    batch_size = 64
+    lr = 2e-4
     num_workers = 4
-    epochs = 500
-    lambda_A = 10
-    lambda_R = 10
-    lambda_TV = 1
-    train_dis_freq = 5
+    epochs = 200
+    alpha = 1
+    beta = 10
+    gamma = 10
+    delta = 10
+    eta = 10
     print_freq = 20
     save_freq = 20
     best_loss_1 = np.inf
     best_loss_2 = np.inf
 
-    transform = transforms.Compose([
-        transforms.Resize((224,224)),
-        transforms.ToTensor()
-    ])
-
     # dataset
-    eye_dataset = ImageFolder(root=DATA_PATH, transform=transform)
+    eye_dataset = EyeDataset(DATA_PATH, 'train')
 
     # dataloader
-    eye_dataloader = DataLoader(eye_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    eye_dataloader = DataLoader(eye_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, drop_last=True)
 
     # losses
-    TV_Loss = my_loss.TVLoss()
-    # R_Loss = nn.MSELoss()
-    R_Loss = nn.L1Loss()
-    GAN_Loss = my_loss.GANLoss()
+    adv_loss_fc = nn.MSELoss()
+    str_loss_fc = SSIM()
+    fea_loss_fc = nn.L1Loss()
+    ct_loss_fc = CTLoss()
+    self_loss_fc = nn.L1Loss()
 
     # models
-    E_G = encoder_decoder.Encoder(norm='in')
-    E_F = encoder_decoder.Encoder(norm='none')
-    D_G = encoder_decoder.Decoder()
-    D_F = encoder_decoder.Decoder()
-    D_J = encoder_decoder.Decoder_j()
-    D = discriminator.MultiscaleDiscriminator(1)
+    m_e = ME(1, 512)
+    m_d = MD(512, 1)
+    m_d_p = MD(512, 1)
+    d_f = MLP(512)
+    d_i = Discriminator(1)
 
-    E_G.to(device)
-    E_F.to(device)
-    D_G.to(device)
-    D_F.to(device)
-    D_J.to(device)
-    D.to(device)
-
+    m_e.to(device)
+    m_d.to(device)
+    m_d_p.to(device)
+    d_f.to(device)
+    d_i.to(device)
     
-    part_1 = [E_G, E_F, D_G, D_F, D_J]
-    part_2 = [D]
+    part_1 = [m_e, m_d, m_d_p]
+    part_2 = [d_f, d_i]
 
     optim_params_1 = [{'params': net.parameters()} for net in part_1]
     optimizer_1 = optim.Adam(optim_params_1, lr)
@@ -91,67 +84,75 @@ if __name__ == '__main__':
     for epoch in range(1, epochs+1):
         loss_1_am.reset()
         loss_2_am.reset()
-        for idx, (image, label) in enumerate(eye_dataloader):
+        for idx, (image, flag) in enumerate(eye_dataloader):
             image = (image - 0.5) * 2
-            image = image[:,0,:,:].unsqueeze(1)
             # image, label = image.to(device), label.to(device)
-            data_dict, num_N = utils.choose_N_A_data(image, label, batch_size)
-            image_N = data_dict['N']
-            image_A = data_dict['A']
-            if image_N != None:
-                image_N = image_N.to(device)
-                c_z = E_G(image_N).detach()
-                y_p = D_G(c_z).detach()
-                loss_g = GAN_Loss(y_p, True)
-                fake_N = D(y_p)
-                loss_d_fake = GAN_Loss(fake_N, False)
-                real_N = D(image_N)
-                loss_d_real = GAN_Loss(real_N, True)
-                loss_2 = loss_d_fake + loss_d_real
-                loss_2_am.update(loss_2.item(), num_N)
-                optimizer_2.zero_grad()   
-                loss_2.backward()
-                optimizer_2.step()
-                if idx % print_freq == 0:
-                    print(
-                        'D: [{}] | [{} / {}]'.format(epoch, idx, len(eye_dataloader)),
-                        'loss: {:.4f} ({:.4f})'.format(loss_2_am.val, loss_2_am.avg),
-                        'lr: {:.6f}'.format(optimizer_2.param_groups[0]['lr']),
-                        sep='\n'
-                    )
-            if idx % train_dis_freq == 0:
-                image = image.to(device)
-                c_z = E_G(image)
-                y_p = D_G(c_z)
-                loss_tv = TV_Loss(y_p)
-                c_s = E_F(image)
-                a = D_F(c_s)
-                a_label = torch.zeros_like(a).to(device)
-                for i, ii in enumerate(label):
-                    if ii.item() == 0:
-                        a_label[i,:,:,:] = a[i,:,:,:]
-                z_pp = D_J(c_z, c_s)
-                z_p = y_p + a
-                loss_r1 = R_Loss(z_p, image)
-                loss_r2 = R_Loss(z_pp, image)
-                loss_r3 = R_Loss(a, a_label)
-                loss_1 = lambda_A*loss_g + lambda_R*(loss_r1 + loss_r2 + loss_r3) + lambda_TV*loss_tv
-                loss_1_am.update(loss_1.item(), batch_size)
-                optimizer_1.zero_grad()   
-                loss_1.backward()
-                optimizer_1.step()
-                if idx % print_freq == 0:
-                    print(
-                        'G: [{}] | [{} / {}]'.format(epoch, idx, len(eye_dataloader)),
-                        'loss: {:.4f} ({:.4f})'.format(loss_1_am.val, loss_1_am.avg),
-                        'lr: {:.6f}'.format(optimizer_1.param_groups[0]['lr']),
-                        sep='\n'
-                    )
+            data_dict, augmented_image_num = utils.choose_augmented_samples(image, flag, batch_size)
+            image_aug = data_dict['aug']
+            image_ori = data_dict['ori']
+            if augmented_image_num == 0 or augmented_image_num == batch_size:
+                continue
+            image_ori = image_ori.to(device)
+            image_aug = image_aug.to(device)
+            # train G
+            z_p = m_e(image_ori)
+            x_h = m_d(z_p)
+            z_s_p = m_e(image_aug)
+            x_s_p = m_d_p(z_s_p)
+            z = torch.randn((batch_size, 512, 1, 1)).to(device)
+            x_p = m_d(z)
+            z_p = m_e(x_p)
+            rf_f = d_f(z_p.squeeze())
+            rf_i = d_i(x_p)
+            adv_loss = 0.5*adv_loss_fc(rf_f, torch.zeros_like(rf_f)) + 0.5*adv_loss_fc(rf_i, torch.zeros_like(rf_i))
+            str_loss = str_loss_fc(image_ori, x_h)
+            fea_loss = fea_loss_fc(z_p, z)
+            ct_loss = ct_loss_fc(z_p)
+            self_loss = self_loss_fc(x_s_p, image_aug)
+            loss_1 = alpha*adv_loss + beta*str_loss + gamma*fea_loss + delta*ct_loss + eta*self_loss
+            loss_1_am.update(loss_1.item(), batch_size)
+            optimizer_1.zero_grad()   
+            loss_1.backward()
+            optimizer_1.step()
+            if idx % print_freq == 0:
+                print(
+                    'G: [{}] | [{} / {}]'.format(epoch, idx, len(eye_dataloader)),
+                    'loss: {:.4f} ({:.4f})'.format(loss_1_am.val, loss_1_am.avg),
+                    'lr: {:.6f}'.format(optimizer_1.param_groups[0]['lr']),
+                    sep='\n'
+                )
+            # train D
+            z_p = m_e(image_ori).detach()
+            x_h = m_d(z_p).detach()
+            z = torch.randn((batch_size, 512, 1, 1)).to(device)
+            x_p = m_d(z).detach()
+            z_p = m_e(x_p).detach()
+            rf_f_real = d_f(z_p.squeeze())
+            rf_f_fake = d_f(z.squeeze())
+            rf_i_real = d_i(image_ori)
+            rf_i_fake = d_i(x_p)
+            loss_f_real = adv_loss_fc(rf_f_real, torch.ones_like(rf_f_real))
+            loss_f_fake = adv_loss_fc(rf_f_fake, torch.zeros_like(rf_f_real))
+            loss_i_real = adv_loss_fc(rf_i_real, torch.ones_like(rf_i_real))
+            loss_i_fake = adv_loss_fc(rf_i_fake, torch.zeros_like(rf_i_fake))
+            loss_2 = loss_f_real + loss_f_fake + loss_i_real + loss_i_fake
+            loss_2_am.update(loss_2.item(), batch_size - augmented_image_num)
+            optimizer_2.zero_grad()   
+            loss_2.backward()
+            optimizer_2.step()
+            if idx % print_freq == 0:
+                print(
+                    'D: [{}] | [{} / {}]'.format(epoch, idx, len(eye_dataloader)),
+                    'loss: {:.4f} ({:.4f})'.format(loss_2_am.val, loss_2_am.avg),
+                    'lr: {:.6f}'.format(optimizer_2.param_groups[0]['lr']),
+                    sep='\n'
+                )
+
         if epoch % save_freq == 0:
-            save_image(y_p / 2 + 0.5, os.path.join(LOG_PATH, 'y_p_{}.jpg'.format(epoch)))
-            save_image(z_pp / 2 + 0.5, os.path.join(LOG_PATH, 'z_pp_{}.jpg'.format(epoch)))
-            save_image(z_p / 2 + 0.5, os.path.join(LOG_PATH, 'z_p_{}.jpg'.format(epoch)))
-            save_image(a, os.path.join(LOG_PATH, 'a_{}.jpg'.format(epoch)))
+            save_image(x_h / 2 + 0.5, os.path.join(LOG_PATH, 'x_h_{}.jpg'.format(epoch)))
+            save_image(x_p / 2 + 0.5, os.path.join(LOG_PATH, 'x_p_{}.jpg'.format(epoch)))
+            save_image(image_aug / 2 + 0.5, os.path.join(LOG_PATH, 'x_s_{}.jpg'.format(epoch)))
+            save_image(x_s_p / 2 + 0.5, os.path.join(LOG_PATH, 'x_s_p_{}.jpg'.format(epoch)))
 
         # save checkpoint
         loss_dict['loss_1'].append(loss_1_am.avg)
@@ -165,12 +166,11 @@ if __name__ == '__main__':
         else:
             is_best = False
         state = {
-            'E_G': E_G.state_dict(),
-            'E_F': E_F.state_dict(),
-            'D_G': D_G.state_dict(),
-            'D_F': D_F.state_dict(),
-            'D_J': D_J.state_dict(),
-            'D':   D.state_dict(),
+            'm_e': m_e.state_dict(),
+            'm_d': m_d.state_dict(),
+            'm_d_p': m_d_p.state_dict(),
+            'd_f': d_f.state_dict(),
+            'd_i': d_i.state_dict(),
         }
         utils.save_checkpoint(state=state, is_best=is_best, save_path=LOG_PATH)
 
