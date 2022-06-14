@@ -1,5 +1,4 @@
 import os
-from random import random
 import cv2
 import numpy as np
 from torch.utils.data import Dataset
