@@ -26,21 +26,19 @@ def plot_loss_curve(loss_1, loss_2, save_path):
     plt.clf()
 
 def save_checkpoint(state, is_best, save_path):
-    torch.save(state['E_G'], os.path.join(save_path,'E_G.pkl'))
-    torch.save(state['E_F'],os.path.join(save_path,'E_F.pkl'))
-    torch.save(state['D_G'], os.path.join(save_path,'D_G.pkl'))
-    torch.save(state['D_F'],os.path.join(save_path,'D_F.pkl'))
-    torch.save(state['D_J'], os.path.join(save_path,'D_J.pkl'))
-    torch.save(state['D'],os.path.join(save_path,'D.pkl'))
+    torch.save(state['m_e'], os.path.join(save_path,'m_e.pkl'))
+    torch.save(state['m_d'],os.path.join(save_path,'m_d.pkl'))
+    torch.save(state['m_d_p'], os.path.join(save_path,'m_d_p.pkl'))
+    torch.save(state['d_f'],os.path.join(save_path,'d_f.pkl'))
+    torch.save(state['d_i'], os.path.join(save_path,'d_i.pkl'))
     torch.save(state, os.path.join(save_path, 'model.pth.tar'))
     if is_best:
         shutil.copyfile(os.path.join(save_path, 'model.pth.tar'), os.path.join(save_path,'model_best.pth.tar'))
-        shutil.copyfile(os.path.join(save_path, 'E_G.pkl'), os.path.join(save_path,'E_G_best.pkl'))
-        shutil.copyfile(os.path.join(save_path, 'E_F.pkl'), os.path.join(save_path,'E_F_best.pkl'))
-        shutil.copyfile(os.path.join(save_path, 'D_G.pkl'), os.path.join(save_path,'D_G_best.pkl'))
-        shutil.copyfile(os.path.join(save_path, 'D_F.pkl'), os.path.join(save_path,'D_F_best.pkl'))
-        shutil.copyfile(os.path.join(save_path, 'D_J.pkl'), os.path.join(save_path,'D_J_best.pkl'))
-        shutil.copyfile(os.path.join(save_path, 'D.pkl'), os.path.join(save_path,'D_best.pkl'))
+        shutil.copyfile(os.path.join(save_path, 'm_e.pkl'), os.path.join(save_path,'m_e_best.pkl'))
+        shutil.copyfile(os.path.join(save_path, 'm_d.pkl'), os.path.join(save_path,'m_d_best.pkl'))
+        shutil.copyfile(os.path.join(save_path, 'm_d_p.pkl'), os.path.join(save_path,'m_d_p_best.pkl'))
+        shutil.copyfile(os.path.join(save_path, 'd_f.pkl'), os.path.join(save_path,'d_f_best.pkl'))
+        shutil.copyfile(os.path.join(save_path, 'd_i.pkl'), os.path.join(save_path,'d_i_best.pkl'))
 
 class AverageMeter(object):
     '''
