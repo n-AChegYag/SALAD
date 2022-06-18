@@ -54,14 +54,14 @@ class ME(nn.Module):
     def __init__(self, in_channels=1, out_channels=512):
         super().__init__()
 
-        self.down1 = Down(in_channels, 64, normalize=False)
+        self.down1 = Down(in_channels, 64)
         self.down2 = Down(64, 128)
         self.down3 = Down(128, 256)
-        self.down4 = Down(256, 512, dropout=0.5)
-        self.down5 = Down(512, 512, dropout=0.5)
-        self.down6 = Down(512, 512, dropout=0.5)
-        self.down7 = Down(512, 512, dropout=0.5)
-        self.down8 = Down(512, out_channels, normalize=False, dropout=0.5)
+        self.down4 = Down(256, 512)
+        self.down5 = Down(512, 512)
+        self.down6 = Down(512, 512)
+        self.down7 = Down(512, 512)
+        self.down8 = Down(512, out_channels)
 
     def forward(self, x):
 
@@ -82,14 +82,19 @@ class MD(nn.Module):
     def __init__(self, in_channels=512, out_channels=1):
         super().__init__()
 
-        self.up1 = Up(in_channels, 512, dropout=0.5)
-        self.up2 = Up(512, 512, dropout=0.5)
-        self.up3 = Up(512, 512, dropout=0.5)
-        self.up4 = Up(512, 512, dropout=0.5)
+        self.up1 = Up(in_channels, 512)
+        self.up2 = Up(512, 512)
+        self.up3 = Up(512, 512)
+        self.up4 = Up(512, 512)
         self.up5 = Up(512, 256)
         self.up6 = Up(256, 128)
         self.up7 = Up(128, 64)
-        self.up8 = Up(64, 1)
+        # self.up8 = Up(64, 1)
+        self.up8 = nn.Sequential(
+            nn.ConvTranspose2d(64, out_channels, 4, 2, 1, bias=False),
+            nn.InstanceNorm2d(out_channels),
+            nn.Tanh()
+        )
 
     def forward(self, x):
 

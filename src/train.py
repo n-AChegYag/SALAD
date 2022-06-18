@@ -22,7 +22,7 @@ if __name__ == '__main__':
     torch.backends.cudnn.benchmark = True
 
     DATA_PATH = 'data/eye/N'
-    LOG_PATH = 'log/220615'
+    LOG_PATH = 'log/220615_final'
     utils.check_and_create_folder(LOG_PATH)
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -38,7 +38,7 @@ if __name__ == '__main__':
     delta = 10
     eta = 10
     print_freq = 20
-    save_freq = 20
+    save_freq = 10
     best_loss_1 = np.inf
     best_loss_2 = np.inf
 
@@ -75,7 +75,7 @@ if __name__ == '__main__':
     optimizer_1 = optim.Adam(optim_params_1, lr)
 
     optim_params_2 = [{'params': net.parameters()} for net in part_2]
-    optimizer_2 = optim.Adam(optim_params_1, lr)
+    optimizer_2 = optim.Adam(optim_params_2, lr)
 
     loss_1_am = utils.AverageMeter()
     loss_2_am = utils.AverageMeter()
@@ -101,12 +101,12 @@ if __name__ == '__main__':
             x_s_p = m_d_p(z_s_p)
             z = torch.randn((batch_size, 512, 1, 1)).to(device)
             x_p = m_d(z)
-            z_p = m_e(x_p)
+            z_h = m_e(x_p)
             rf_f = d_f(z_p.squeeze())
             rf_i = d_i(x_p)
-            adv_loss = 0.5*adv_loss_fc(rf_f, torch.zeros_like(rf_f)) + 0.5*adv_loss_fc(rf_i, torch.zeros_like(rf_i))
-            str_loss = str_loss_fc(image_ori, x_h)
-            fea_loss = fea_loss_fc(z_p, z)
+            adv_loss = 0.5*adv_loss_fc(rf_f, torch.ones_like(rf_f)) + 0.5*adv_loss_fc(rf_i, torch.zeros_like(rf_i))
+            str_loss = -str_loss_fc(x_h, image_ori)
+            fea_loss = fea_loss_fc(z_h, z)
             ct_loss = ct_loss_fc(z_p)
             self_loss = self_loss_fc(x_s_p, image_aug)
             loss_1 = alpha*adv_loss + beta*str_loss + gamma*fea_loss + delta*ct_loss + eta*self_loss
@@ -126,13 +126,13 @@ if __name__ == '__main__':
             x_h = m_d(z_p).detach()
             z = torch.randn((batch_size, 512, 1, 1)).to(device)
             x_p = m_d(z).detach()
-            z_p = m_e(x_p).detach()
+            z_h = m_e(x_p).detach()
             rf_f_real = d_f(z_p.squeeze())
             rf_f_fake = d_f(z.squeeze())
             rf_i_real = d_i(image_ori)
             rf_i_fake = d_i(x_p)
             loss_f_real = adv_loss_fc(rf_f_real, torch.ones_like(rf_f_real))
-            loss_f_fake = adv_loss_fc(rf_f_fake, torch.zeros_like(rf_f_real))
+            loss_f_fake = adv_loss_fc(rf_f_fake, torch.zeros_like(rf_f_fake))
             loss_i_real = adv_loss_fc(rf_i_real, torch.ones_like(rf_i_real))
             loss_i_fake = adv_loss_fc(rf_i_fake, torch.zeros_like(rf_i_fake))
             loss_2 = loss_f_real + loss_f_fake + loss_i_real + loss_i_fake
@@ -173,13 +173,3 @@ if __name__ == '__main__':
             'd_i': d_i.state_dict(),
         }
         utils.save_checkpoint(state=state, is_best=is_best, save_path=LOG_PATH)
-
-
-
-
-
-
-
-
-
-    

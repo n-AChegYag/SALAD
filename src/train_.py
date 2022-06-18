@@ -22,7 +22,7 @@ if __name__ == '__main__':
     torch.backends.cudnn.benchmark = True
 
     DATA_PATH = 'data/eye/N'
-    LOG_PATH = 'log/220615_'
+    LOG_PATH = 'log/220616'
     utils.check_and_create_folder(LOG_PATH)
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -38,7 +38,7 @@ if __name__ == '__main__':
     delta = 10
     eta = 10
     print_freq = 20
-    save_freq = 20
+    save_freq = 10
     best_loss_1 = np.inf
     best_loss_2 = np.inf
 
@@ -75,7 +75,7 @@ if __name__ == '__main__':
     optimizer_1 = optim.Adam(optim_params_1, lr)
 
     optim_params_2 = [{'params': net.parameters()} for net in part_2]
-    optimizer_2 = optim.Adam(optim_params_1, lr)
+    optimizer_2 = optim.Adam(optim_params_2, lr)
 
     loss_1_am = utils.AverageMeter()
     loss_2_am = utils.AverageMeter()
@@ -87,14 +87,6 @@ if __name__ == '__main__':
         for idx, (image, flag) in enumerate(eye_dataloader):
             image = ((image - 0.5) * 2).float()
             image = image.to(device)
-            # image, label = image.to(device), label.to(device)
-            # data_dict, augmented_image_num = utils.choose_augmented_samples(image, flag, batch_size)
-            # image_aug = data_dict['aug']
-            # image_ori = data_dict['ori']
-            # if augmented_image_num == 0 or augmented_image_num == batch_size:
-            #     continue
-            # image_ori = image_ori.to(device)
-            # image_aug = image_aug.to(device)
             # train G
             Z = m_e(image)
             z_dict, augmented_image_num = utils.choose_augmented_samples(Z, flag, batch_size)
@@ -107,12 +99,12 @@ if __name__ == '__main__':
             x_s_p = m_d_p(z_s_p)
             z = torch.randn((batch_size, 512, 1, 1)).to(device)
             x_p = m_d(z)
-            z_p = m_e(x_p)
+            z_h = m_e(x_p)
             rf_f = d_f(z_p.squeeze())
             rf_i = d_i(x_p)
-            adv_loss = 0.5*adv_loss_fc(rf_f, torch.zeros_like(rf_f)) + 0.5*adv_loss_fc(rf_i, torch.zeros_like(rf_i))
-            str_loss = str_loss_fc(x, x_h)
-            fea_loss = fea_loss_fc(z_p, z)
+            adv_loss = 0.5*adv_loss_fc(rf_f, torch.ones_like(rf_f, requires_grad=False)) + 0.5*adv_loss_fc(rf_i, torch.zeros_like(rf_i, requires_grad=False))
+            str_loss = str_loss_fc(x_h, x)
+            fea_loss = fea_loss_fc(z_h, z)
             ct_loss = ct_loss_fc(z_p)
             self_loss = self_loss_fc(x_s_p, x_s)
             loss_1 = alpha*adv_loss + beta*str_loss + gamma*fea_loss + delta*ct_loss + eta*self_loss
@@ -132,15 +124,15 @@ if __name__ == '__main__':
             x_h = m_d(z_p).detach()
             z = torch.randn((batch_size, 512, 1, 1)).to(device)
             x_p = m_d(z).detach()
-            z_p = m_e(x_p).detach()
+            z_h = m_e(x_p).detach()
             rf_f_real = d_f(z_p.squeeze())
             rf_f_fake = d_f(z.squeeze())
             rf_i_real = d_i(x)
             rf_i_fake = d_i(x_p)
-            loss_f_real = adv_loss_fc(rf_f_real, torch.ones_like(rf_f_real))
-            loss_f_fake = adv_loss_fc(rf_f_fake, torch.zeros_like(rf_f_real))
-            loss_i_real = adv_loss_fc(rf_i_real, torch.ones_like(rf_i_real))
-            loss_i_fake = adv_loss_fc(rf_i_fake, torch.zeros_like(rf_i_fake))
+            loss_f_real = adv_loss_fc(rf_f_real, torch.ones_like(rf_f_real, requires_grad=False))
+            loss_f_fake = adv_loss_fc(rf_f_fake, torch.zeros_like(rf_f_fake, requires_grad=False))
+            loss_i_real = adv_loss_fc(rf_i_real, torch.ones_like(rf_i_real, requires_grad=False))
+            loss_i_fake = adv_loss_fc(rf_i_fake, torch.zeros_like(rf_i_fake, requires_grad=False))
             loss_2 = loss_f_real + loss_f_fake + loss_i_real + loss_i_fake
             loss_2_am.update(loss_2.item(), batch_size - augmented_image_num)
             optimizer_2.zero_grad()   

@@ -51,3 +51,4 @@ if __name__ == '__main__':
     eye_dataloader = DataLoader(eye_dataset, batch_size=4, drop_last=True)
     for image, flag in eye_dataloader:
         print(image.shape, flag)
+        print(image.max(), image.min())
